@@ -1,6 +1,44 @@
 export type CostumeCategory = 'mangpao' | 'kao' | 'pei' | 'zhezi' | 'guanyi';
 export type HeadpieceCategory = 'imperial' | 'official' | 'warrior' | 'female' | 'other';
 
+export type RoleType =
+  | 'laosheng'
+  | 'xiaosheng'
+  | 'dan'
+  | 'qingyi'
+  | 'huadan'
+  | 'wudan'
+  | 'laodan'
+  | 'hualian'
+  | 'chou'
+  | 'wensheng'
+  | 'wusheng'
+  | 'custom';
+
+export const ROLE_TYPE_LABELS: Record<RoleType, string> = {
+  laosheng: '老生',
+  xiaosheng: '小生',
+  dan: '旦角',
+  qingyi: '青衣',
+  huadan: '花旦',
+  wudan: '武旦',
+  laodan: '老旦',
+  hualian: '花脸',
+  chou: '丑角',
+  wensheng: '文生',
+  wusheng: '武生',
+  custom: '自定义',
+};
+
+export interface Role {
+  id: string;
+  name: string;
+  roleType: RoleType;
+  description?: string;
+  avatarDataUrl?: string;
+  defaultLandmarks?: Landmarks;
+}
+
 export interface Costume {
   id: string;
   name: string;
@@ -52,6 +90,25 @@ export interface OutfitScheme {
   headpieceLayer: LayerState;
   landmarks: Landmarks;
   imageData: string;
+}
+
+export interface BatchScheme {
+  id: string;
+  roleId: string;
+  costumeId: string | null;
+  headpieceId: string | null;
+  costumeLayer: LayerState;
+  headpieceLayer: LayerState;
+  thumbnail?: string;
+}
+
+export interface BatchSession {
+  id: string;
+  name: string;
+  createdAt: number;
+  roles: Role[];
+  schemes: BatchScheme[];
+  schemesPerRole: number;
 }
 
 export interface EditorState {

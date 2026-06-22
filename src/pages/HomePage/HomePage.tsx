@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { NavLink } from 'react-router-dom';
-import { Upload, Crown, GitCompare, Palette, ArrowRight, Star, Users, Clock } from 'lucide-react';
+import { Upload, Crown, GitCompare, Palette, ArrowRight, Star, Users, Clock, Layers } from 'lucide-react';
 import { costumes } from '@/data/costumes';
 import { headpieces } from '@/data/headpieces';
 import { svgToDataUrl } from '@/utils/canvasUtils';
@@ -25,6 +25,16 @@ const features = [
     icon: GitCompare,
     title: '对比生成',
     description: '一键生成高清对比图，方便导演挑选',
+  },
+  {
+    icon: Layers,
+    title: '批量方案',
+    description: '批量选择多角色，自动推荐多套搭配方案',
+  },
+  {
+    icon: Users,
+    title: '网格对比',
+    description: '网格布局展示所有角色方案，一键微调导出',
   },
 ];
 
@@ -68,6 +78,13 @@ export default function HomePage() {
                 <Palette size={24} />
                 开始试穿
                 <ArrowRight size={20} className="group-hover:translate-x-1 transition-transform" />
+              </NavLink>
+              <NavLink
+                to="/batch-compare"
+                className="flex items-center gap-3 px-8 py-4 bg-opera-red text-white rounded-xl text-lg font-bold border-2 border-opera-gold/50 hover:bg-red-900 transition-all hover:scale-105 shadow-2xl"
+              >
+                <Layers size={24} />
+                批量对比
               </NavLink>
               <NavLink
                 to="/compare"

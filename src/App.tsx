@@ -3,6 +3,7 @@ import AppHeader from './components/AppHeader/AppHeader';
 import HomePage from './pages/HomePage/HomePage';
 import EditorPage from './pages/EditorPage/EditorPage';
 import CompareGenerator from './components/CompareGenerator/CompareGenerator';
+import BatchComparePage from './pages/BatchComparePage/BatchComparePage';
 
 function App() {
   return (
@@ -13,6 +14,7 @@ function App() {
           <Route path="/" element={<HomePage />} />
           <Route path="/editor" element={<EditorPage />} />
           <Route path="/compare" element={<CompareGenerator />} />
+          <Route path="/batch-compare" element={<BatchComparePage />} />
         </Routes>
       </div>
     </Router>

@@ -1,11 +1,12 @@
 import { NavLink } from 'react-router-dom';
-import { Palette, GitCompare, Home } from 'lucide-react';
+import { Palette, GitCompare, Home, Layers } from 'lucide-react';
 
 export default function AppHeader() {
   const navItems = [
     { path: '/', label: '首页', icon: Home },
     { path: '/editor', label: '试穿编辑', icon: Palette },
     { path: '/compare', label: '对比图', icon: GitCompare },
+    { path: '/batch-compare', label: '批量对比', icon: Layers },
   ];
 
   return (

@@ -1,8 +1,23 @@
 import { create } from 'zustand';
-import { LayerState, Landmarks, Costume, Headpiece, OutfitScheme } from '@/types';
+import {
+  LayerState,
+  Landmarks,
+  Costume,
+  Headpiece,
+  OutfitScheme,
+  BatchSession,
+  BatchScheme,
+  Role,
+} from '@/types';
 import { costumes } from '@/data/costumes';
 import { headpieces } from '@/data/headpieces';
 import { loadImage } from '@/utils/canvasUtils';
+import { generateSchemeCombinations } from '@/data/roleRecommendations';
+import {
+  createDefaultLayerState,
+  createDefaultHeadpieceLayerState,
+  DEFAULT_LANDMARKS,
+} from '@/utils/batchRenderUtils';
 
 interface EditorState {
   userImage: HTMLImageElement | null;
@@ -16,7 +31,10 @@ interface EditorState {
   isDragging: boolean;
   dragStart: { x: number; y: number } | null;
   imageSize: { width: number; height: number } | null;
-  
+
+  batchSession: BatchSession | null;
+  schemeThumbnails: Map<string, string>;
+
   setUserImage: (image: HTMLImageElement | null, dataUrl: string | null) => void;
   setLandmarks: (landmarks: Landmarks | null) => void;
   setSelectedCostume: (costume: Costume | null) => void;
@@ -30,6 +48,15 @@ interface EditorState {
   resetAll: () => void;
   resetLayer: (layer: 'costume' | 'headpiece') => void;
   loadScheme: (scheme: OutfitScheme) => void;
+
+  createBatchSession: (name: string, roles: Role[], schemesPerRole?: number) => void;
+  clearBatchSession: () => void;
+  addScheme: (scheme: BatchScheme) => void;
+  removeScheme: (schemeId: string) => void;
+  updateScheme: (schemeId: string, updates: Partial<BatchScheme>) => void;
+  generateRecommendations: () => void;
+  setSchemeThumbnail: (schemeId: string, thumbnail: string) => void;
+  setAllSchemeThumbnails: (thumbnails: Map<string, string>) => void;
 }
 
 const initialLayerState: LayerState = {
@@ -38,6 +65,14 @@ const initialLayerState: LayerState = {
   scale: 1,
   rotation: 0,
 };
+
+export function generateBatchSchemeId(): string {
+  return `batch_scheme_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+}
+
+export function generateBatchSessionId(): string {
+  return `batch_session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+}
 
 export const useEditorStore = create<EditorState>((set, get) => ({
   userImage: null,
@@ -52,9 +87,12 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   dragStart: null,
   imageSize: null,
 
+  batchSession: null,
+  schemeThumbnails: new Map(),
+
   setUserImage: (image, dataUrl) => {
-    set({ 
-      userImage: image, 
+    set({
+      userImage: image,
       imageDataUrl: dataUrl,
       selectedCostume: null,
       selectedHeadpiece: null,
@@ -180,5 +218,127 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       headpieceLayer: scheme.headpieceLayer,
       activeLayer: null,
     });
+  },
+
+  createBatchSession: (name, roles, schemesPerRole = 4) => {
+    const session: BatchSession = {
+      id: generateBatchSessionId(),
+      name,
+      createdAt: Date.now(),
+      roles,
+      schemes: [],
+      schemesPerRole,
+    };
+
+    const schemes: BatchScheme[] = [];
+    for (const role of roles) {
+      const combinations = generateSchemeCombinations(role.roleType, schemesPerRole);
+      for (let i = 0; i < combinations.length; i++) {
+        const combo = combinations[i][0];
+        schemes.push({
+          id: generateBatchSchemeId(),
+          roleId: role.id,
+          costumeId: combo.costumeId,
+          headpieceId: combo.headpieceId,
+          costumeLayer: createDefaultLayerState(),
+          headpieceLayer: createDefaultHeadpieceLayerState(),
+        });
+      }
+    }
+
+    session.schemes = schemes;
+    set({
+      batchSession: session,
+      schemeThumbnails: new Map(),
+    });
+  },
+
+  clearBatchSession: () => {
+    set({
+      batchSession: null,
+      schemeThumbnails: new Map(),
+    });
+  },
+
+  addScheme: (scheme) => {
+    set((state) => {
+      if (!state.batchSession) return state;
+      return {
+        batchSession: {
+          ...state.batchSession,
+          schemes: [...state.batchSession.schemes, scheme],
+        },
+      };
+    });
+  },
+
+  removeScheme: (schemeId) => {
+    set((state) => {
+      if (!state.batchSession) return state;
+      const newThumbnails = new Map(state.schemeThumbnails);
+      newThumbnails.delete(schemeId);
+      return {
+        batchSession: {
+          ...state.batchSession,
+          schemes: state.batchSession.schemes.filter(s => s.id !== schemeId),
+        },
+        schemeThumbnails: newThumbnails,
+      };
+    });
+  },
+
+  updateScheme: (schemeId, updates) => {
+    set((state) => {
+      if (!state.batchSession) return state;
+      return {
+        batchSession: {
+          ...state.batchSession,
+          schemes: state.batchSession.schemes.map(s =>
+            s.id === schemeId ? { ...s, ...updates } : s
+          ),
+        },
+      };
+    });
+  },
+
+  generateRecommendations: () => {
+    const { batchSession } = get();
+    if (!batchSession) return;
+
+    const newSchemes: BatchScheme[] = [];
+    for (const role of batchSession.roles) {
+      const combinations = generateSchemeCombinations(role.roleType, batchSession.schemesPerRole);
+      for (let i = 0; i < combinations.length; i++) {
+        const combo = combinations[i][0];
+        newSchemes.push({
+          id: generateBatchSchemeId(),
+          roleId: role.id,
+          costumeId: combo.costumeId,
+          headpieceId: combo.headpieceId,
+          costumeLayer: createDefaultLayerState(),
+          headpieceLayer: createDefaultHeadpieceLayerState(),
+        });
+      }
+    }
+
+    set((state) => ({
+      batchSession: state.batchSession ? {
+        ...state.batchSession,
+        schemes: newSchemes,
+      } : null,
+      schemeThumbnails: new Map(),
+    }));
+  },
+
+  setSchemeThumbnail: (schemeId, thumbnail) => {
+    set((state) => {
+      const newMap = new Map(state.schemeThumbnails);
+      newMap.set(schemeId, thumbnail);
+      return { schemeThumbnails: newMap };
+    });
+  },
+
+  setAllSchemeThumbnails: (thumbnails) => {
+    set({ schemeThumbnails: thumbnails });
   },
 }));
