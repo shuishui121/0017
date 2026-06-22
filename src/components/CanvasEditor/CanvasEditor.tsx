@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState, useCallback } from 'react';
-import { Upload, Camera, RotateCcw, Eye, EyeOff, Save } from 'lucide-react';
+import { Upload, Camera, RotateCcw, Eye, EyeOff, Save, X } from 'lucide-react';
 import { useEditorStore } from '@/store/useEditorStore';
 import {
   drawImageOnCanvas,
@@ -22,7 +22,9 @@ interface CanvasEditorProps {
 export default function CanvasEditor({ width = 500, height = 700 }: CanvasEditorProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const cameraCanvasRef = useRef<HTMLCanvasElement>(null);
+  const cameraStreamRef = useRef<MediaStream | null>(null);
   
   const [showLandmarks, setShowLandmarks] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -31,6 +33,9 @@ export default function CanvasEditor({ width = 500, height = 700 }: CanvasEditor
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [schemeName, setSchemeName] = useState('');
   const [saveMessage, setSaveMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [cameraModalOpen, setCameraModalOpen] = useState(false);
+  const [cameraError, setCameraError] = useState<string | null>(null);
+  const [isCameraReady, setIsCameraReady] = useState(false);
   
   const transformRef = useRef({ offsetX: 0, offsetY: 0, scale: 1 });
   
@@ -120,6 +125,15 @@ export default function CanvasEditor({ width = 500, height = 700 }: CanvasEditor
     }
   }, [selectedHeadpiece]);
 
+  useEffect(() => {
+    return () => {
+      if (cameraStreamRef.current) {
+        cameraStreamRef.current.getTracks().forEach(track => track.stop());
+        cameraStreamRef.current = null;
+      }
+    };
+  }, []);
+
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -137,12 +151,32 @@ export default function CanvasEditor({ width = 500, height = 700 }: CanvasEditor
         
         setUserImage(img, dataUrl);
         
+        // 在显示画布大小的临时画布上绘制并检测，确保坐标系一致
         const tempCanvas = document.createElement('canvas');
-        tempCanvas.width = img.width;
-        tempCanvas.height = img.height;
+        tempCanvas.width = width;
+        tempCanvas.height = height;
         const tempCtx = tempCanvas.getContext('2d');
         if (tempCtx) {
-          tempCtx.drawImage(img, 0, 0);
+          // 使用与显示画布相同的绘制逻辑
+          const imgRatio = img.width / img.height;
+          const canvasRatio = width / height;
+          
+          let drawWidth: number, drawHeight: number;
+          if (imgRatio > canvasRatio) {
+            drawHeight = height;
+            drawWidth = drawHeight * imgRatio;
+          } else {
+            drawWidth = width;
+            drawHeight = drawWidth / imgRatio;
+          }
+          
+          const offsetX = (width - drawWidth) / 2;
+          const offsetY = (height - drawHeight) / 2;
+          
+          tempCtx.fillStyle = '#FFF8E7';
+          tempCtx.fillRect(0, 0, width, height);
+          tempCtx.drawImage(img, offsetX, offsetY, drawWidth, drawHeight);
+          
           const detected = detectLandmarksFromCanvas(tempCanvas);
           setLandmarks(detected);
         }
@@ -153,12 +187,6 @@ export default function CanvasEditor({ width = 500, height = 700 }: CanvasEditor
       console.error('图像处理失败:', error);
       setIsProcessing(false);
     }
-  };
-
-  const handleCameraCapture = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    await processImageFile(file);
   };
 
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -248,6 +276,123 @@ export default function CanvasEditor({ width = 500, height = 700 }: CanvasEditor
     });
   };
 
+  const startCamera = async () => {
+    setCameraError(null);
+    setIsCameraReady(false);
+    try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error('当前浏览器不支持摄像头访问');
+      }
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: 'user',
+          width: { ideal: 1280 },
+          height: { ideal: 960 },
+        },
+        audio: false,
+      });
+      cameraStreamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play();
+        setIsCameraReady(true);
+      }
+    } catch (error: any) {
+      console.error('摄像头启动失败:', error);
+      if (error.name === 'NotAllowedError') {
+        setCameraError('摄像头权限被拒绝，请在浏览器设置中允许访问摄像头');
+      } else if (error.name === 'NotFoundError') {
+        setCameraError('未找到可用的摄像头设备');
+      } else {
+        setCameraError(error.message || '摄像头启动失败，请尝试上传照片');
+      }
+    }
+  };
+
+  const stopCamera = () => {
+    if (cameraStreamRef.current) {
+      cameraStreamRef.current.getTracks().forEach(track => track.stop());
+      cameraStreamRef.current = null;
+    }
+    setIsCameraReady(false);
+  };
+
+  const openCameraModal = () => {
+    setCameraModalOpen(true);
+    setCameraError(null);
+    setTimeout(() => startCamera(), 100);
+  };
+
+  const closeCameraModal = () => {
+    stopCamera();
+    setCameraModalOpen(false);
+    setCameraError(null);
+  };
+
+  const capturePhoto = async () => {
+    if (!videoRef.current || !cameraCanvasRef.current || !isCameraReady) return;
+    
+    const video = videoRef.current;
+    const captureCanvas = cameraCanvasRef.current;
+    
+    const targetWidth = 1280;
+    const targetHeight = Math.round((video.videoHeight / video.videoWidth) * targetWidth);
+    captureCanvas.width = targetWidth;
+    captureCanvas.height = targetHeight;
+    
+    const ctx = captureCanvas.getContext('2d');
+    if (!ctx) return;
+    
+    ctx.save();
+    ctx.translate(targetWidth, 0);
+    ctx.scale(-1, 1);
+    ctx.drawImage(video, 0, 0, targetWidth, targetHeight);
+    ctx.restore();
+    
+    const dataUrl = captureCanvas.toDataURL('image/png');
+    
+    stopCamera();
+    setCameraModalOpen(false);
+    
+    setIsProcessing(true);
+    try {
+      const img = await loadImage(dataUrl);
+      setUserImage(img, dataUrl);
+      
+      const tempCanvas = document.createElement('canvas');
+      tempCanvas.width = width;
+      tempCanvas.height = height;
+      const tempCtx = tempCanvas.getContext('2d');
+      if (tempCtx) {
+        const imgRatio = img.width / img.height;
+        const canvasRatio = width / height;
+        
+        let drawWidth: number, drawHeight: number;
+        if (imgRatio > canvasRatio) {
+          drawHeight = height;
+          drawWidth = drawHeight * imgRatio;
+        } else {
+          drawWidth = width;
+          drawHeight = drawWidth / imgRatio;
+        }
+        
+        const offsetX = (width - drawWidth) / 2;
+        const offsetY = (height - drawHeight) / 2;
+        
+        tempCtx.fillStyle = '#FFF8E7';
+        tempCtx.fillRect(0, 0, width, height);
+        tempCtx.drawImage(img, offsetX, offsetY, drawWidth, drawHeight);
+        
+        const detected = detectLandmarksFromCanvas(tempCanvas);
+        setLandmarks(detected);
+      }
+      setIsProcessing(false);
+    } catch (error) {
+      console.error('拍照处理失败:', error);
+      setIsProcessing(false);
+    }
+  };
+
   const handleSaveScheme = async () => {
     if (!schemeName.trim()) {
       setSaveMessage({ type: 'error', text: '请输入方案名称' });
@@ -317,7 +462,7 @@ export default function CanvasEditor({ width = 500, height = 700 }: CanvasEditor
             <span className="text-sm">上传照片</span>
           </button>
           <button
-            onClick={() => cameraInputRef.current?.click()}
+            onClick={openCameraModal}
             disabled={isProcessing}
             className="flex items-center gap-2 px-4 py-2 bg-opera-gold text-opera-dark rounded-lg hover:bg-yellow-500 transition-colors shadow-md disabled:opacity-50"
           >
@@ -359,14 +504,6 @@ export default function CanvasEditor({ width = 500, height = 700 }: CanvasEditor
         type="file"
         accept="image/*"
         onChange={handleFileUpload}
-        className="hidden"
-      />
-      <input
-        ref={cameraInputRef}
-        type="file"
-        accept="image/*"
-        capture="user"
-        onChange={handleCameraCapture}
         className="hidden"
       />
       
@@ -441,6 +578,77 @@ export default function CanvasEditor({ width = 500, height = 700 }: CanvasEditor
                 className="px-4 py-2 bg-opera-red text-white rounded-lg hover:bg-red-900 transition-colors"
               >
                 保存
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {cameraModalOpen && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
+          <div className="relative bg-opera-cream rounded-lg p-4 max-w-3xl w-full mx-4 shadow-2xl border-2 border-opera-gold">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xl font-bold text-opera-red font-opera-display">摄像头拍摄</h3>
+              <button
+                onClick={closeCameraModal}
+                className="p-2 hover:bg-gray-200 rounded-lg transition-colors"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            
+            <div className="relative bg-black rounded-lg overflow-hidden aspect-[4/3] flex items-center justify-center">
+              <video
+                ref={videoRef}
+                className="w-full h-full object-cover transform scale-x-[-1]"
+                playsInline
+                muted
+              />
+              <canvas ref={cameraCanvasRef} className="hidden" />
+              
+              {!isCameraReady && !cameraError && (
+                <div className="absolute inset-0 flex items-center justify-center text-white">
+                  <div className="text-center">
+                    <div className="w-12 h-12 border-4 border-opera-gold border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+                    <p>正在启动摄像头...</p>
+                  </div>
+                </div>
+              )}
+              
+              {cameraError && (
+                <div className="absolute inset-0 flex items-center justify-center text-white p-6">
+                  <div className="text-center">
+                    <Camera size={48} className="mx-auto mb-4 opacity-50" />
+                    <p className="text-red-400 mb-2">{cameraError}</p>
+                    <button
+                      onClick={() => fileInputRef.current?.click()}
+                      className="px-4 py-2 bg-opera-red text-white rounded-lg hover:bg-red-900 transition-colors mt-2"
+                    >
+                      改用上传照片
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+            
+            <p className="text-sm text-gray-600 mt-3 text-center">
+              请正对摄像头，保证面部清晰、双肩可见
+            </p>
+            
+            <div className="flex justify-center gap-4 mt-4">
+              <button
+                onClick={closeCameraModal}
+                className="px-6 py-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
+              >
+                取消
+              </button>
+              <button
+                onClick={capturePhoto}
+                disabled={!isCameraReady}
+                className="px-8 py-3 bg-opera-red text-white rounded-full hover:bg-red-900 transition-colors shadow-lg disabled:opacity-50 flex items-center gap-2"
+              >
+                <Camera size={20} />
+                <span>拍照</span>
               </button>
             </div>
           </div>
