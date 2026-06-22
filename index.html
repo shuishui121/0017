@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="虚拟戏服试穿工具 - 传统戏曲服装在线试穿系统，支持蟒袍、靠、帔、褶子、官衣等32种经典行头和15款盔头试穿" />
+    <meta name="keywords" content="戏曲,戏服,虚拟试穿,京剧,昆曲,豫剧,黄梅戏,评剧,越剧" />
+    <title>虚拟戏服试穿工具 - 传统戏曲服装在线试穿系统</title>
+    <script type="module">
+      if (import.meta.hot?.on) {
+        import.meta.hot.on('vite:error', (error) => {
+          if (error.err) {
+            console.error(
+              [error.err.message, error.err.frame].filter(Boolean).join('\n'),
+            )
+          }
+        })
+      }
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
